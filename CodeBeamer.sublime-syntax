@@ -1,0 +1,171 @@
+%YAML 1.2
+---
+# This definition aims to meet the CodeBeamer specifications
+#   https://codebeamer.com/cb/wiki/8730
+
+name: CodeBeamer
+file_extensions:
+  - cbmarkup
+scope: CodeBeamer.source
+version: 2
+
+variables: 
+  command_names: |-
+    (?xi:
+      tabbedSection |
+      thumbnailImages |
+      red | blue | cyan | gray | green | magenta | orange | pink | yellow | # color text
+      small | sup | sub | strike |
+      information | warning | error | videobox |
+      collapsebox | commentbox |
+      collapse                                                              # for lists
+    )
+  escaper: (?<!~)
+
+contexts:
+  main:
+    - match: '%!'
+      scope: invalid
+    - include: heading_styling
+    - include: link_styling
+    - include: command_matching
+    - include: listings
+    - include: text_stylings
+    - include: commenting
+    - include: lining
+
+  command:
+    - include: command_matching
+      comment: |-
+        we need the recustion so that commands
+        can contain further commands
+    - match: '(?<=%%)(\((?:[^)(]|\((?:[^)(]|\((?:[^)(]|\([^)(]*\))*\))*\))*\))(?=[\s\S]*)'
+      captures:
+        1: entity.name.trait.params
+      comment: |-
+        matches %%(((...))) followed by some chars followed
+        This are styling parameters like (color:rgb(...);)
+    - match: '(?<=%%)({{command_names}})(?=[\s\f])'
+      captures:
+        1: entity.name.trait
+    - match: '(?<=%%)tab-'
+      push: command_tab #go into tab name styling after consuming 'tab-''
+    ## from main
+    - include: heading_styling
+    - include: link_styling
+    - include: command_matching
+    - include: listings
+    - include: text_stylings
+    - include: commenting
+    - include: lining
+
+  command_tab:
+    - meta_scope: entity.name.class
+    - match: '[\w-]+'
+      set: # tab title style
+         - meta_scope: markup.heading.1 punctuation.definition.heading
+         - include: expect_eol
+    - include: eol_pop
+
+  heading:
+    - meta_scope: markup.heading.1 punctuation.definition.heading
+    - match: '$' # line end
+      pop: true
+
+  code:
+    - meta_scope: markup.raw
+    - match: '}}'
+      pop: true
+
+  bold:
+    - meta_scope: markup.bold
+    - match: '__'
+      pop: true
+    - include: command_matching
+    - include: text_stylings
+ 
+  italic:
+    - meta_scope: markup.italic
+    - match: "''"
+      pop: true
+    - include: command_matching
+    - include: text_stylings
+
+  link:
+    - meta_scope: string.other.link
+    - meta_content_scope: string.other.link, markup.underline.link
+    - match: ']'
+      pop: true
+
+  buletList:
+    - meta_scope: markup.list punctuation.definition.list_item
+    - match: '\s'
+      pop: true
+  numberedList:
+    - meta_scope: markup.list punctuation.definition.list_item
+    - match: '\s'
+      pop: true
+
+  comment:
+    - meta_scope: comment.line
+    - include: eol_pop
+
+  line:
+    - meta_scope: punctuation.separator
+    - include: eol_pop
+
+###[ PROTOTYPES ]#############################################################
+
+  eol_pop:
+    - match: $
+      pop: 1
+
+  expect_eol:
+    - include: eol_pop
+    - match: \S+
+      scope: invalid.illegal.expected-eol.markdown
+
+  heading_styling:
+    - match: '^![1-5](?=\s)'
+      push: heading
+
+  link_styling:
+    - match: '{{escaper}}\[(?!\{)' # unescaped [ not followd by {
+      push: link
+
+  command_matching: ## template
+    - match: '{{escaper}}%%'       # unescaped %%'
+      push: command
+      captures:
+        0: entity.name.function.constructor
+    - match: '%!'
+      captures:
+        0: entity.name.function.destructor
+      pop: 1
+
+  text_stylings:
+    - match: '{{escaper}}{{'       # unescaped {{
+      push: code
+      comment: This is monospace code 
+    - match: '{{escaper}}__'       # unescaped __
+      push: bold
+      comment: "bold text"
+    - match: "{{escaper}}''"       # unescaped ''
+      push: italic
+      comment: "italic text"
+
+  listings:
+    - match: '^\*+(?=\s)'          # multiple * folloed by a whitespace at the beginning of the line
+      push: buletList 
+    - match: '^\#+(?=\s)'          # multiple # folloed by a whitespace at the beginning of the line
+      push: numberedList 
+
+  commenting:
+    - match: (^\/\/)(/s/S)*
+      captures:
+        0: punctuation.definition.comment
+      push: comment
+
+  lining:
+    - match: ^[-]{4,}
+      push: line
